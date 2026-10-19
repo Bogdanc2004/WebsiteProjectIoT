@@ -122,15 +122,26 @@ function getDeviceId(plantId) {
   return plant?.deviceId || null;
 }
 
-export async function fetchSensorData(plantId, hours = 24) {
+export async function fetchSensorData(plantId, hours = 200 * 24) {
   const deviceId = getDeviceId(plantId);
   if (!deviceId) return [];
 
   const allData = await fetchFromCloud();
+  const deviceData = allData.filter(d => d.device === deviceId);
+  if (deviceData.length === 0) return [];
 
-  // Filter by device and time range
-  const cutoff = Date.now() - hours * 60 * 60 * 1000;
-  return allData.filter(d => d.device === deviceId && d.timestamp >= cutoff);
+  // Determine reference anchor time:
+  // If the device sent data within the last 24h, use Date.now().
+  // Otherwise, use the latest packet timestamp so 24h/7d/30d filter relative to the latest sensor activity.
+  const latestTimestamp = deviceData[deviceData.length - 1].timestamp;
+  const isCurrentlyStreaming = (Date.now() - latestTimestamp) <= (24 * 60 * 60 * 1000);
+  const anchorTime = isCurrentlyStreaming ? Date.now() : latestTimestamp;
+
+  const cutoff = anchorTime - hours * 60 * 60 * 1000;
+  const filtered = deviceData.filter(d => d.timestamp >= cutoff);
+
+  // Return filtered data, or fallback to all device data if filtered is empty
+  return filtered.length > 0 ? filtered : deviceData;
 }
 
 export async function fetchLatestReading(plantId) {
@@ -159,7 +170,7 @@ export async function refreshSensorData(plantId) {
   sensorCache.data = null;
   sensorCache.fetchedAt = 0;
 
-  return fetchSensorData(plantId, 24);
+  return fetchSensorData(plantId, 200 * 24);
 }
 
 // --- Plants (persisted in localStorage) ---

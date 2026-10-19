@@ -8,6 +8,7 @@ import SignupForm from './components/auth/SignupForm';
 import DashboardPage from './pages/DashboardPage';
 import PlantsPage from './pages/PlantsPage';
 import PlantDetailPage from './pages/PlantDetailPage';
+import ShopPage from './pages/ShopPage';
 import './App.css';
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/plants" element={<PlantsPage />} />
             <Route path="/plants/:id" element={<PlantDetailPage />} />
+            <Route path="/shop" element={<ShopPage />} />
           </Route>
 
           {/* Default redirect */}

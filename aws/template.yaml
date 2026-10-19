@@ -158,6 +158,44 @@ Resources:
         - DynamoDBReadPolicy:
             TableName: !Ref SensorDataTable
 
+  ManageUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: manageUsers.handler
+      CodeUri: lambda/
+      Environment:
+        Variables:
+          USERS_BUCKET: !Ref UsersBucket
+          USERS_KEY: users.json
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - GET
+            - POST
+            - PUT
+            - OPTIONS
+          AllowHeaders:
+            - Content-Type
+            - Authorization
+      Events:
+        ManageUsersApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PlantaApi
+            Path: /users
+            Method: ANY
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref UsersBucket
+
+  UsersBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'planta-users-${AWS::AccountId}'
+
   # --- IoT Rule (routes MQTT to DynamoDB) ---
   IoTSensorRule:
     Type: AWS::IoT::TopicRule
@@ -211,3 +249,7 @@ Outputs:
   SensorDataTableName:
     Description: DynamoDB Sensor Data table name
     Value: !Ref SensorDataTable
+
+  UsersFunctionUrl:
+    Description: Lambda Function URL for user management and authentication sync
+    Value: !GetAtt ManageUsersFunctionUrl.FunctionUrl

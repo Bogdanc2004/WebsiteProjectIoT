@@ -27,6 +27,12 @@ export function AuthProvider({ children }) {
     return user;
   }, []);
 
+  const updateProfile = useCallback(async ({ name, avatar, currentPassword, newPassword }) => {
+    const updated = await authService.updateUserProfile({ name, avatar, currentPassword, newPassword });
+    setUser(updated);
+    return updated;
+  }, []);
+
   const logout = useCallback(async () => {
     await authService.logout();
     setUser(null);
@@ -39,6 +45,7 @@ export function AuthProvider({ children }) {
     login,
     signup,
     logout,
+    updateProfile,
   };
 
   return (

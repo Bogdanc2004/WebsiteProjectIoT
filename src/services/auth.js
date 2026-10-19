@@ -81,9 +81,16 @@ export async function hashPasswordPBKDF2(password, saltHex, iterations = 100000)
   return bytesToHex(new Uint8Array(derivedBits));
 }
 
-// AWS Lambda and S3 storage layer
+// AWS Lambda storage layer (No local storage for users DB)
 
-// Loads users from AWS S3 via Lambda with local fallback.
+// Clean any legacy users database from localStorage on startup
+try {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('planta_users_db');
+  }
+} catch {}
+
+// Loads users directly from AWS Lambda.
 async function loadUsersDb(forceFresh = false) {
   const now = Date.now();
   if (!forceFresh && usersMemoryCache && now - usersCacheTimestamp < CACHE_TTL_MS) {
@@ -91,50 +98,42 @@ async function loadUsersDb(forceFresh = false) {
   }
 
   try {
-    const res = await fetch(AWS_USERS_URL);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        usersMemoryCache = data;
-        usersCacheTimestamp = now;
-        try { localStorage.setItem('planta_users_db', JSON.stringify(data)); } catch {}
-        return usersMemoryCache;
-      }
+    const res = await fetch(AWS_USERS_URL, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!res.ok) {
+      throw new Error(`AWS Lambda returned HTTP ${res.status}`);
     }
+
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      usersMemoryCache = data;
+      usersCacheTimestamp = now;
+      return usersMemoryCache;
+    }
+
+    throw new Error('Invalid users data structure received from AWS Lambda');
   } catch (err) {
-    console.warn('[Planta Auth] Failed to fetch users from AWS Lambda:', err);
-  }
-
-  // Fallback to local storage
-  try {
-    const local = localStorage.getItem('planta_users_db');
-    if (local) {
-      const parsed = JSON.parse(local);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        usersMemoryCache = parsed;
-        usersCacheTimestamp = now;
-        return parsed;
-      }
+    console.error('[Planta Auth] Failed to fetch users from AWS Lambda:', err);
+    if (usersMemoryCache) {
+      return usersMemoryCache;
     }
-  } catch {}
-
-  return usersMemoryCache || [];
+    throw new Error('Unable to connect to AWS Lambda user service. Check your connection or AWS Lambda URL.');
+  }
 }
 
-// Saves users to AWS S3 via Lambda with local backup.
+// Saves users directly to AWS Lambda (S3 / cloud backend).
 async function saveUsersDb(users) {
   usersMemoryCache = users;
   usersCacheTimestamp = Date.now();
 
   try {
-    localStorage.setItem('planta_users_db', JSON.stringify(users));
-  } catch {}
-
-  try {
     const res = await fetch(AWS_USERS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(users)
+      body: JSON.stringify(users),
     });
 
     if (!res.ok) {
@@ -177,6 +176,7 @@ function createSession(user) {
       id: user.id,
       email: user.email,
       name: user.name,
+      avatar: user.avatar || null,
       createdAt: user.createdAt,
     },
     createdAt: now,
@@ -229,6 +229,7 @@ export function getCurrentUser() {
     id: session.userId,
     email: '',
     name: 'User',
+    avatar: null,
     createdAt: session.createdAt,
   };
 }
@@ -324,6 +325,91 @@ export async function login(email, password) {
     id: user.id,
     email: user.email,
     name: user.name,
+    avatar: user.avatar || null,
+    createdAt: user.createdAt,
+  };
+}
+
+// Updates user profile (name, avatar, and/or password) and syncs changes to AWS Lambda
+export async function updateUserProfile({ name, avatar, currentPassword, newPassword }) {
+  const current = getCurrentUser();
+  if (!current) {
+    throw new Error('Not authenticated');
+  }
+
+  const users = await loadUsersDb(true);
+  const userIndex = users.findIndex(
+    u => u.id === current.id || (u.email && u.email.toLowerCase() === current.email.toLowerCase())
+  );
+
+  if (userIndex === -1) {
+    throw new Error('User profile not found in database');
+  }
+
+  const user = { ...users[userIndex] };
+
+  // If changing password, verify current password
+  if (newPassword) {
+    if (!currentPassword) {
+      throw new Error('Current password is required to change password');
+    }
+    if (newPassword.length < 6) {
+      throw new Error('New password must be at least 6 characters');
+    }
+
+    const candidateHash = await hashPasswordPBKDF2(
+      currentPassword,
+      user.salt,
+      user.iterations || 100000
+    );
+
+    if (candidateHash !== user.passwordHash) {
+      throw new Error('Current password is incorrect');
+    }
+
+    // Generate fresh salt and hash new password
+    const salt = generateRandomHex(16);
+    const iterations = 100000;
+    const passwordHash = await hashPasswordPBKDF2(newPassword, salt, iterations);
+
+    user.salt = salt;
+    user.iterations = iterations;
+    user.passwordHash = passwordHash;
+  }
+
+  if (name && name.trim()) {
+    user.name = name.trim();
+  }
+
+  if (avatar !== undefined) {
+    user.avatar = avatar; // base64 data URL or null
+  }
+
+  // Update in database and sync with AWS Lambda
+  users[userIndex] = user;
+  await saveUsersDb(users);
+
+  // Update active session store
+  const sessionId = getCookie(COOKIE_NAME);
+  if (sessionId) {
+    const sessions = loadSessionsStore();
+    if (sessions[sessionId]) {
+      sessions[sessionId].user = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar || null,
+        createdAt: user.createdAt,
+      };
+      saveSessionsStore(sessions);
+    }
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatar: user.avatar || null,
     createdAt: user.createdAt,
   };
 }

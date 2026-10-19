@@ -4,10 +4,10 @@ import { fetchSensorData, fetchLatestReading } from '../services/api';
 /**
  * Hook for fetching and auto-refreshing sensor data for a plant.
  * @param {string} plantId
- * @param {number} hours - Time range in hours
+ * @param {number} hours - Time range in hours (default: 200 days = 4800h)
  * @param {number} refreshInterval - Auto-refresh interval in ms (0 = disabled)
  */
-export function useSensorData(plantId, hours = 24, refreshInterval = 30000) {
+export function useSensorData(plantId, hours = 200 * 24, refreshInterval = 30000) {
   const [data, setData] = useState([]);
   const [latest, setLatest] = useState(null);
   const [loading, setLoading] = useState(true);
