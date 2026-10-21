@@ -1,7 +1,7 @@
 // Authentication service for Planta.
 // Handles PBKDF2 password hashing, session cookies, and AWS Lambda storage.
 
-const AWS_USERS_URL = "https://smkqi64yworqw6lfwuywsvsk2q0hdixk.lambda-url.eu-central-1.on.aws/";
+const AWS_USERS_URL = process.env.ENDPOINT_AWS_LAMBDA_FOR_USERS;
 
 const COOKIE_NAME = 'session_id';
 const COOKIE_EXPIRY_DAYS = 7;
@@ -88,7 +88,7 @@ try {
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem('planta_users_db');
   }
-} catch {}
+} catch { }
 
 // Loads users directly from AWS Lambda.
 async function loadUsersDb(forceFresh = false) {
@@ -141,7 +141,7 @@ async function saveUsersDb(users) {
       try {
         const json = await res.json();
         if (json?.error) serverError = json.error;
-      } catch {}
+      } catch { }
 
       console.error('[Planta Auth] AWS Lambda Error:', serverError || `HTTP ${res.status}`);
       throw new Error(serverError || `AWS Lambda returned HTTP ${res.status}`);

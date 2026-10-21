@@ -5,7 +5,7 @@
 
 import { PLANT_TYPES } from './mockData';
 
-const API_BASE = 'https://8in3gwsxq6.execute-api.eu-central-1.amazonaws.com';
+const API_BASE = process.env.AWS_API_GATEWAY_URL;
 const PLANTS_STORAGE_KEY = 'planta_plants';
 
 // --- Plant store (persisted in localStorage) ---
