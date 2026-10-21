@@ -1,7 +1,7 @@
 // Authentication service for Planta.
 // Handles PBKDF2 password hashing, session cookies, and AWS Lambda storage.
 
-const AWS_USERS_URL = process.env.ENDPOINT_AWS_LAMBDA_FOR_USERS;
+const AWS_USERS_URL = import.meta.env.VITE_AWS_LAMBDA_USERS_URL;
 
 const COOKIE_NAME = 'session_id';
 const COOKIE_EXPIRY_DAYS = 7;
